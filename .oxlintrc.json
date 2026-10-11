@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript"],
+  "categories": { "correctness": "error" },
+  "env": { "es2022": true, "node": true },
+  "rules": {
+    "typescript/consistent-type-imports": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+  },
+  "overrides": [{ "files": ["apps/client/**/*.{ts,tsx}"], "env": { "browser": true } }],
+  "ignorePatterns": ["**/dist/**", "**/coverage/**"]
+}
