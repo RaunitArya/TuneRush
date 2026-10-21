@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export * from './schemas/auth.js';
 
 export const healthResponseSchema = z.object({
   status: z.literal('ok'),
