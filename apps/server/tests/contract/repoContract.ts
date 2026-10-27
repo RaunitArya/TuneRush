@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { RefreshTokenRepo } from '../../src/modules/auth/refreshToken.repo.js';
 import type { UserRepo } from '../../src/modules/users/user.repo.js';
+import type { RoomRecord, RoomRepo } from '../../src/modules/rooms/room.repo.js';
 
 export interface Repos {
   users: UserRepo;
   refreshTokens: RefreshTokenRepo;
+  rooms: RoomRepo;
 }
 
 const newUser = (n: number) => ({
@@ -13,6 +15,20 @@ const newUser = (n: number) => ({
   passwordHash: 'hash',
   displayName: `User ${n}`,
 });
+
+const room = (over: Partial<RoomRecord> = {}): RoomRecord => ({
+  code: 'ABC234',
+  hostUid: 'host',
+  status: 'lobby',
+  settings: { rounds: 10, durationSec: 30, language: 'any' },
+  players: [{ uid: 'host', name: 'Host', avatar: null, score: 0, connected: true }],
+  songIds: [],
+  currentRound: 0,
+  expiresAt: new Date('2030-01-01T00:00:00Z'),
+  ...over,
+});
+
+const player = (uid: string) => ({ uid, name: uid, avatar: null, score: 0, connected: true });
 
 /**
  * The same checks run against the in-memory fakes AND real MongoDB. If both pass, the fakes
@@ -126,6 +142,69 @@ export function describeRepoContract(name: string, makeRepos: () => Promise<Repo
         expect((await repos.refreshTokens.findByHash('a'))?.revokedAt).not.toBeNull();
         expect((await repos.refreshTokens.findByHash('b'))?.revokedAt).not.toBeNull();
         expect((await repos.refreshTokens.findByHash('c'))?.revokedAt).toBeNull();
+      });
+    });
+
+    describe('rooms', () => {
+      it('creates and finds a room; a duplicate code is CODE_TAKEN', async () => {
+        await repos.rooms.create(room());
+        expect((await repos.rooms.findByCode('ABC234'))?.hostUid).toBe('host');
+        expect(await repos.rooms.findByCode('ZZZZZZ')).toBeNull();
+        await expect(repos.rooms.create(room())).rejects.toMatchObject({
+          statusCode: 409,
+          code: 'CODE_TAKEN',
+        });
+      });
+
+      it('addPlayer adds a new player in the lobby', async () => {
+        await repos.rooms.create(room());
+        const updated = await repos.rooms.addPlayer('ABC234', player('p1'), 8);
+        expect(updated?.players.map((p) => p.uid)).toEqual(['host', 'p1']);
+      });
+
+      it('addPlayer returns null for a duplicate player, a full room, a started game or an unknown room', async () => {
+        await repos.rooms.create(room());
+        expect(await repos.rooms.addPlayer('ABC234', player('host'), 8)).toBeNull();
+        expect(await repos.rooms.addPlayer('ABC234', player('p1'), 1)).toBeNull();
+        expect(await repos.rooms.addPlayer('NOPE23', player('p1'), 8)).toBeNull();
+
+        await repos.rooms.create(room({ code: 'PLAY23', status: 'playing' }));
+        expect(await repos.rooms.addPlayer('PLAY23', player('p1'), 8)).toBeNull();
+      });
+
+      it('addPlayer is atomic: simultaneous joins never exceed the limit', async () => {
+        await repos.rooms.create(room());
+        const results = await Promise.all(
+          Array.from({ length: 12 }, (_, i) => repos.rooms.addPlayer('ABC234', player(`p${i}`), 4)),
+        );
+        expect(results.filter(Boolean)).toHaveLength(3); // host + 3 = 4
+        expect((await repos.rooms.findByCode('ABC234'))?.players).toHaveLength(4);
+      });
+
+      it('removePlayer, setHost and delete', async () => {
+        await repos.rooms.create(room());
+        await repos.rooms.addPlayer('ABC234', player('p1'), 8);
+        const after = await repos.rooms.removePlayer('ABC234', 'host');
+        expect(after?.players.map((p) => p.uid)).toEqual(['p1']);
+
+        await repos.rooms.setHost('ABC234', 'p1');
+        expect((await repos.rooms.findByCode('ABC234'))?.hostUid).toBe('p1');
+
+        await repos.rooms.delete('ABC234');
+        expect(await repos.rooms.findByCode('ABC234')).toBeNull();
+      });
+
+      it('updateSettings works only for the host in the lobby and keeps other settings', async () => {
+        await repos.rooms.create(room());
+        expect(
+          await repos.rooms.updateSettings('ABC234', 'someone-else', { rounds: 3 }),
+        ).toBeNull();
+
+        const updated = await repos.rooms.updateSettings('ABC234', 'host', { rounds: 3 });
+        expect(updated?.settings).toEqual({ rounds: 3, durationSec: 30, language: 'any' });
+
+        await repos.rooms.create(room({ code: 'PLAY23', status: 'playing' }));
+        expect(await repos.rooms.updateSettings('PLAY23', 'host', { rounds: 3 })).toBeNull();
       });
     });
   });

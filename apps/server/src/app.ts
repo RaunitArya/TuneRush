@@ -10,6 +10,9 @@ import { createApiLimiter, createAuthLimiter } from './middleware/rateLimit.js';
 import { createAuthRoutes } from './modules/auth/auth.routes.js';
 import { createAuthService } from './modules/auth/auth.service.js';
 import type { RefreshTokenRepo } from './modules/auth/refreshToken.repo.js';
+import type { RoomRepo } from './modules/rooms/room.repo.js';
+import { createRoomsRoutes } from './modules/rooms/rooms.routes.js';
+import { createRoomsService } from './modules/rooms/rooms.service.js';
 import type { UserRepo } from './modules/users/user.repo.js';
 import { createUsersRoutes } from './modules/users/users.routes.js';
 
@@ -18,13 +21,14 @@ export interface AppDeps {
   logger: Logger;
   users: UserRepo;
   refreshTokens: RefreshTokenRepo;
+  rooms: RoomRepo;
   /** True when the database is reachable. Used by GET /ready. */
   isReady: () => Promise<boolean>;
   now?: () => Date;
 }
 
 export function createApp(deps: AppDeps) {
-  const { env, logger, users, refreshTokens, isReady, now } = deps;
+  const { env, logger, users, refreshTokens, rooms, isReady, now } = deps;
   const app = express();
 
   app.disable('x-powered-by');
@@ -46,6 +50,7 @@ export function createApp(deps: AppDeps) {
   });
 
   const auth = createAuthService({ env, users, refreshTokens, ...(now ? { now } : {}) });
+  const roomsService = createRoomsService({ rooms, users, ...(now ? { now } : {}) });
 
   const api = express.Router();
   api.use(createApiLimiter(env.API_RATE_LIMIT_MAX));
@@ -54,6 +59,7 @@ export function createApp(deps: AppDeps) {
     createAuthRoutes({ env, auth, users, authLimiter: createAuthLimiter(env.AUTH_RATE_LIMIT_MAX) }),
   );
   api.use('/users', createUsersRoutes({ env, users }));
+  api.use('/rooms', createRoomsRoutes({ env, rooms: roomsService }));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

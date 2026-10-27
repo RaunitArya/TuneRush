@@ -1,7 +1,11 @@
 import { pino } from 'pino';
 import { createApp } from '../../src/app.js';
 import { parseEnv, type Env } from '../../src/config/env.js';
-import { createMemoryRefreshTokenRepo, createMemoryUserRepo } from './memoryRepos.js';
+import {
+  createMemoryRefreshTokenRepo,
+  createMemoryUserRepo,
+  createMemoryRoomRepo,
+} from './memoryRepos.js';
 
 export const TEST_SECRET = 'test-secret-test-secret-test-secret-123';
 
@@ -30,6 +34,7 @@ export function buildTestApp(envOverrides: Record<string, string> = {}, ready = 
   const repos = {
     users: createMemoryUserRepo(),
     refreshTokens: createMemoryRefreshTokenRepo(),
+    rooms: createMemoryRoomRepo(),
   };
   const clock = createClock();
   const app = createApp({

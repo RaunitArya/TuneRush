@@ -4,6 +4,7 @@ import type {
   RefreshTokenRepo,
 } from '../../src/modules/auth/refreshToken.repo.js';
 import { emptyStats, type UserRecord, type UserRepo } from '../../src/modules/users/user.repo.js';
+import type { RoomRecord, RoomRepo } from '../../src/modules/rooms/room.repo.js';
 
 /**
  * In-memory fakes of the repositories. Tests for routes and services use these, so they
@@ -84,6 +85,50 @@ export function createMemoryRefreshTokenRepo(): RefreshTokenRepo {
       for (const t of tokens.values()) {
         if (t.familyId === familyId && !t.revokedAt) t.revokedAt = now;
       }
+    },
+  };
+}
+
+export function createMemoryRoomRepo(): RoomRepo {
+  const rooms = new Map<string, RoomRecord>();
+  return {
+    async create(room) {
+      if (rooms.has(room.code)) throw conflict('CODE_TAKEN', 'Room code already exists');
+      rooms.set(room.code, structuredClone(room));
+      return structuredClone(room);
+    },
+    async findByCode(code) {
+      const r = rooms.get(code);
+      return r ? structuredClone(r) : null;
+    },
+    async addPlayer(code, player, maxPlayers) {
+      const r = rooms.get(code);
+      if (!r || r.status !== 'lobby') return null;
+      if (r.players.some((p) => p.uid === player.uid)) return null;
+      if (r.players.length >= maxPlayers) return null;
+      r.players.push(structuredClone(player));
+      return structuredClone(r);
+    },
+    async removePlayer(code, uid) {
+      const r = rooms.get(code);
+      if (!r) return null;
+      r.players = r.players.filter((p) => p.uid !== uid);
+      return structuredClone(r);
+    },
+    async setHost(code, uid) {
+      const r = rooms.get(code);
+      if (r) r.hostUid = uid;
+    },
+    async updateSettings(code, hostUid, settings) {
+      const r = rooms.get(code);
+      if (!r || r.hostUid !== hostUid || r.status !== 'lobby') return null;
+      for (const [key, value] of Object.entries(settings)) {
+        if (value !== undefined) (r.settings as unknown as Record<string, unknown>)[key] = value;
+      }
+      return structuredClone(r);
+    },
+    async delete(code) {
+      rooms.delete(code);
     },
   };
 }

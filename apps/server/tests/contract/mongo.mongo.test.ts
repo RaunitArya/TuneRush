@@ -6,6 +6,7 @@ import {
   RefreshTokenModel,
 } from '../../src/modules/auth/refreshToken.mongo.js';
 import { createMongoUserRepo, UserModel } from '../../src/modules/users/user.mongo.js';
+import { createMongoRoomRepo, RoomModel } from '../../src/modules/rooms/room.mongo.js';
 import { describeRepoContract } from './repoContract.js';
 
 let server: MongoMemoryServer;
@@ -15,7 +16,7 @@ beforeAll(async () => {
   server = await MongoMemoryServer.create();
   await mongoose.connect(server.getUri('tunerush_test'));
   // Unique indexes must exist before the duplicate-key checks run.
-  await Promise.all([UserModel.init(), RefreshTokenModel.init()]);
+  await Promise.all([UserModel.init(), RefreshTokenModel.init(), RoomModel.init()]);
 }, 120_000);
 
 afterAll(async () => {
@@ -24,9 +25,14 @@ afterAll(async () => {
 });
 
 describeRepoContract('real MongoDB', async () => {
-  await Promise.all([UserModel.deleteMany({}), RefreshTokenModel.deleteMany({})]);
+  await Promise.all([
+    UserModel.deleteMany({}),
+    RefreshTokenModel.deleteMany({}),
+    RoomModel.deleteMany({}),
+  ]);
   return {
     users: createMongoUserRepo(),
     refreshTokens: createMongoRefreshTokenRepo(),
+    rooms: createMongoRoomRepo(),
   };
 });
